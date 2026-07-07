@@ -1,0 +1,35 @@
+<Page
+    x:Class="DownloadManager.MainPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:DownloadManager"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d"
+    Background="{ThemeResource ApplicationPageBackgroundThemeBrush}">
+
+    <Grid Padding="24" RowSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+        </Grid.RowDefinitions>
+
+        <TextBlock Text="Download Manager" Style="{StaticResource TitleTextBlockStyle}" Grid.Row="0"/>
+
+        <TextBox x:Name="UrlTextBox" Header="Download URL" PlaceholderText="https://example.com/file.zip" Grid.Row="1"/>
+
+        <!-- In Uno, NumberBox might require Microsoft.UI.Xaml.Controls namespace if not implicitly included.
+             But it usually is. We will use the same XAML. -->
+        <NumberBox x:Name="ChunkCountNumberBox" Header="Chunk Count" Value="4" Minimum="1" Maximum="32" SpinButtonPlacementMode="Inline" Grid.Row="2"/>
+
+        <Button x:Name="DownloadButton" Content="Start Download" Style="{StaticResource AccentButtonStyle}" Click="DownloadButton_Click" Grid.Row="3" HorizontalAlignment="Stretch"/>
+
+        <ProgressBar x:Name="DownloadProgressBar" Minimum="0" Maximum="100" Value="0" Grid.Row="4" Margin="0,8,0,0"/>
+
+        <TextBlock x:Name="StatusTextBlock" Text="Ready" Grid.Row="5" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"/>
+    </Grid>
+</Page>
