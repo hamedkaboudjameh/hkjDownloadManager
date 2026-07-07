@@ -69,10 +69,6 @@ namespace DownloadManager
             {
                 await job.InitializeAsync();
 
-                if (job.TotalFileSize <= 0)
-                {
-                    job.TotalFileSize = 1024 * 1024 * 10; // 10 MB Dummy size for testing
-                }
 
                 await job.StartDownloadAsync(progress, _cts.Token);
 

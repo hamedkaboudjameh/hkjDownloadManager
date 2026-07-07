@@ -24,11 +24,27 @@ public class DownloadJob
         _httpClient = httpClient ?? new HttpClient();
     }
 
-    // This method is a placeholder for the logic mentioned in the prompt.
     public async Task InitializeAsync()
     {
-        // Example: Sends initial HEAD request to fetch TotalFileSize and checks Accept-Ranges.
-        // TotalFileSize = ...
+        using var request = new HttpRequestMessage(HttpMethod.Head, DownloadUrl);
+        using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead);
+        
+        response.EnsureSuccessStatusCode();
+
+        if (response.Content.Headers.ContentLength.HasValue)
+        {
+            TotalFileSize = response.Content.Headers.ContentLength.Value;
+        }
+        else
+        {
+            throw new InvalidOperationException("The server did not provide a Content-Length header. Cannot determine file size.");
+        }
+
+        if (response.Headers.AcceptRanges == null || !response.Headers.AcceptRanges.Contains("bytes"))
+        {
+            // If the server doesn't support range requests, we must download in a single chunk
+            ChunkCount = 1;
+        }
     }
 
     public async Task StartDownloadAsync(IProgress<double> progress, CancellationToken cancellationToken)
