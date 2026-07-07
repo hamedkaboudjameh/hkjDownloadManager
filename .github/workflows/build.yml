@@ -1,0 +1,35 @@
+name: Build Download Manager
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Setup .NET
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.0.x'
+
+    - name: Setup MSBuild
+      uses: microsoft/setup-msbuild@v2
+
+    - name: Restore Dependencies
+      run: dotnet restore
+
+    - name: Build and Publish (Unpackaged Standalone)
+      run: dotnet publish -c Release -r win-x64 --self-contained true -p:WindowsPackageType=None -p:WindowsAppSDKSelfContained=true -o "${{ github.workspace }}\publish"
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: DownloadManager-Portable-win-x64
+        path: "${{ github.workspace }}\publish\"
