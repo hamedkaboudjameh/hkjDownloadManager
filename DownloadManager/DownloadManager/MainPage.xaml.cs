@@ -10,77 +10,120 @@ namespace DownloadManager
 {
     public sealed partial class MainPage : Page
     {
-        private CancellationTokenSource _cts;
+        private CancellationTokenSource? _cts;
+        private DownloadJob? _currentJob;
+        private bool _isPaused;
+        private bool _isStopped;
+
+        private List<ProgressBar> _chunkProgressBars = new();
+        private List<TextBlock> _chunkTextBlocks = new();
 
         public MainPage()
         {
             this.InitializeComponent();
         }
 
+        private void UpdateButtonStates(bool isIdle = false, bool isDownloading = false, bool isPaused = false)
+        {
+            DownloadButton.IsEnabled = isIdle;
+            PauseButton.IsEnabled = isDownloading;
+            ResumeButton.IsEnabled = isPaused;
+            StopButton.IsEnabled = isDownloading || isPaused;
+            UrlTextBox.IsEnabled = isIdle;
+            ChunkCountNumberBox.IsEnabled = isIdle;
+        }
+
         private async void DownloadButton_Click(object sender, RoutedEventArgs e)
         {
-            string url = UrlTextBox.Text;
-            if (string.IsNullOrWhiteSpace(url))
+            await StartOrResumeDownload(false);
+        }
+
+        private async Task StartOrResumeDownload(bool isResume)
+        {
+            if (!isResume)
             {
-                StatusTextBlock.Text = "Please enter a valid URL.";
-                return;
+                string url = UrlTextBox.Text;
+                if (string.IsNullOrWhiteSpace(url))
+                {
+                    StatusTextBlock.Text = "Please enter a valid URL.";
+                    return;
+                }
+
+                if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uriResult) || (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
+                {
+                    StatusTextBlock.Text = "Invalid URL format.";
+                    return;
+                }
+
+                // In Uno, the Value property of NumberBox is double, so we cast to int
+                int chunkCount = (int)ChunkCountNumberBox.Value;
+                if (chunkCount <= 0)
+                {
+                    StatusTextBlock.Text = "Chunk count must be greater than 0.";
+                    return;
+                }
+
+                string fileName = Path.GetFileName(uriResult.LocalPath) ?? "";
+                if (string.IsNullOrEmpty(fileName))
+                {
+                    fileName = "downloaded_file";
+                }
+                string targetFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", fileName);
+
+                _currentJob = new DownloadJob(url, targetFilePath, chunkCount);
+                _isStopped = false;
             }
 
-            if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uriResult) || (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
-            {
-                StatusTextBlock.Text = "Invalid URL format.";
-                return;
-            }
-
-            // In Uno, the Value property of NumberBox is double, so we cast to int
-            int chunkCount = (int)ChunkCountNumberBox.Value;
-            if (chunkCount <= 0)
-            {
-                StatusTextBlock.Text = "Chunk count must be greater than 0.";
-                return;
-            }
-
-            string fileName = Path.GetFileName(uriResult.LocalPath);
-            if (string.IsNullOrEmpty(fileName))
-            {
-                fileName = "downloaded_file";
-            }
-            string targetFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", fileName);
-
-            DownloadButton.IsEnabled = false;
-            StatusTextBlock.Text = $"Downloading to {targetFilePath}...";
-            ProgressBarsPanel.Children.Clear();
+            _isPaused = false;
+            UpdateButtonStates(isDownloading: true);
+            StatusTextBlock.Text = isResume ? $"Resuming download to {_currentJob?.TargetFilePath}..." : $"Downloading to {_currentJob?.TargetFilePath}...";
 
             _cts = new CancellationTokenSource();
 
-            var job = new DownloadJob(url, targetFilePath, chunkCount);
-
             try
             {
-                await job.InitializeAsync();
+                if (!isResume)
+                {
+                    if (_currentJob != null)
+                    {
+                        await _currentJob.InitializeAsync();
+
+                        ProgressBarsPanel.Children.Clear();
+                        _chunkProgressBars.Clear();
+                        _chunkTextBlocks.Clear();
+
+                        // If the server doesn't support range requests, chunkCount is adjusted in InitializeAsync
+                        int actualChunkCount = _currentJob.ChunkCount;
+
+                        for (int i = 0; i < actualChunkCount; i++)
+                        {
+                            var chunkPanel = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(0, 0, 0, 8) };
+                            var chunkTextBlock = new TextBlock { Text = $"Chunk {i + 1}: 0.00%", Style = (Style)Application.Current.Resources["BodyTextBlockStyle"] };
+                            var chunkProgressBar = new ProgressBar { Minimum = 0, Maximum = 100, Value = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+
+                            chunkPanel.Children.Add(chunkTextBlock);
+                            chunkPanel.Children.Add(chunkProgressBar);
+                            ProgressBarsPanel.Children.Add(chunkPanel);
+
+                            _chunkProgressBars.Add(chunkProgressBar);
+                            _chunkTextBlocks.Add(chunkTextBlock);
+                        }
+                    }
+                }
 
                 var chunkProgresses = new List<IProgress<double>>();
-
-                // If the server doesn't support range requests, chunkCount is adjusted in InitializeAsync
-                int actualChunkCount = job.ChunkCount;
-
-                for (int i = 0; i < actualChunkCount; i++)
+                for (int i = 0; i < (_currentJob?.ChunkCount ?? 0); i++)
                 {
-                    var chunkPanel = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(0, 0, 0, 8) };
-                    var chunkTextBlock = new TextBlock { Text = $"Chunk {i + 1}: 0.00%", Style = (Style)Application.Current.Resources["BodyTextBlockStyle"] };
-                    var chunkProgressBar = new ProgressBar { Minimum = 0, Maximum = 100, Value = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
-
-                    chunkPanel.Children.Add(chunkTextBlock);
-                    chunkPanel.Children.Add(chunkProgressBar);
-                    ProgressBarsPanel.Children.Add(chunkPanel);
-
                     int chunkIndex = i; // capture loop variable
                     var chunkProgress = new Progress<double>(percent =>
                     {
                         DispatcherQueue.TryEnqueue(() =>
                         {
-                            chunkProgressBar.Value = percent;
-                            chunkTextBlock.Text = $"Chunk {chunkIndex + 1}: {percent:F2}%";
+                            if (chunkIndex < _chunkProgressBars.Count)
+                            {
+                                _chunkProgressBars[chunkIndex].Value = percent;
+                                _chunkTextBlocks[chunkIndex].Text = $"Chunk {chunkIndex + 1}: {percent:F2}%";
+                            }
                         });
                     });
                     chunkProgresses.Add(chunkProgress);
@@ -94,24 +137,112 @@ namespace DownloadManager
                     });
                 });
 
-
-                await job.StartDownloadAsync(globalProgress, chunkProgresses, _cts.Token);
+                if (_currentJob != null)
+                {
+                    await _currentJob.StartDownloadAsync(globalProgress, chunkProgresses, _cts.Token);
+                }
 
                 StatusTextBlock.Text = "Merged Successfully";
+                _currentJob = null;
+                UpdateButtonStates(isIdle: true);
             }
             catch (OperationCanceledException)
             {
-                StatusTextBlock.Text = "Download Cancelled.";
+                if (_isStopped)
+                {
+                    CleanupPartFiles();
+                    StatusTextBlock.Text = "Download Stopped.";
+                    _currentJob = null;
+                    UpdateButtonStates(isIdle: true);
+                }
+                else if (_isPaused)
+                {
+                    StatusTextBlock.Text = "Download Paused.";
+                    UpdateButtonStates(isPaused: true);
+                }
+                else
+                {
+                    StatusTextBlock.Text = "Download Cancelled.";
+                    _currentJob = null;
+                    UpdateButtonStates(isIdle: true);
+                }
             }
             catch (Exception ex)
             {
                 StatusTextBlock.Text = $"Error: {ex.Message}";
+                _currentJob = null;
+                UpdateButtonStates(isIdle: true);
             }
             finally
             {
-                DownloadButton.IsEnabled = true;
                 _cts?.Dispose();
                 _cts = null;
+            }
+        }
+
+        private void PauseButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_cts != null && !_cts.IsCancellationRequested)
+            {
+                _isPaused = true;
+                _cts.Cancel();
+            }
+        }
+
+        private async void ResumeButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_currentJob != null && _isPaused)
+            {
+                await StartOrResumeDownload(true);
+            }
+        }
+
+        private void StopButton_Click(object sender, RoutedEventArgs e)
+        {
+            _isStopped = true;
+
+            if (_cts != null && !_cts.IsCancellationRequested)
+            {
+                // Note: The cancellation exception handler will handle the cleanup and UI reset for the stopped download.
+                _cts.Cancel();
+            }
+            else
+            {
+                // If it was already paused or not actively downloading
+                CleanupPartFiles();
+                StatusTextBlock.Text = "Download Stopped.";
+                _currentJob = null;
+                ProgressBarsPanel.Children.Clear();
+                _chunkProgressBars.Clear();
+                _chunkTextBlocks.Clear();
+                UpdateButtonStates(isIdle: true);
+            }
+
+            // If actively downloading, we wait for the try/catch block to clear the UI after lock release.
+            // But we can eagerly clear UI elements here if we want. Let's just do it here to make it responsive.
+            ProgressBarsPanel.Children.Clear();
+            _chunkProgressBars.Clear();
+            _chunkTextBlocks.Clear();
+        }
+
+        private void CleanupPartFiles()
+        {
+            if (_currentJob == null) return;
+
+            for (int i = 0; i < _currentJob.ChunkCount; i++)
+            {
+                string partFilePath = $"{_currentJob.TargetFilePath}.part{i}";
+                if (File.Exists(partFilePath))
+                {
+                    try
+                    {
+                        File.Delete(partFilePath);
+                    }
+                    catch
+                    {
+                        // Ignore cleanup errors during stop
+                    }
+                }
             }
         }
     }

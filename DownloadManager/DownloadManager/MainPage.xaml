@@ -26,7 +26,18 @@
              But it usually is. We will use the same XAML. -->
         <NumberBox x:Name="ChunkCountNumberBox" Header="Chunk Count" Value="4" Minimum="1" Maximum="32" SpinButtonPlacementMode="Inline" Grid.Row="2"/>
 
-        <Button x:Name="DownloadButton" Content="Start Download" Style="{StaticResource AccentButtonStyle}" Click="DownloadButton_Click" Grid.Row="3" HorizontalAlignment="Stretch"/>
+        <Grid Grid.Row="3" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+            <Button x:Name="DownloadButton" Content="Start" Style="{StaticResource AccentButtonStyle}" Click="DownloadButton_Click" Grid.Column="0" HorizontalAlignment="Stretch"/>
+            <Button x:Name="PauseButton" Content="Pause" Click="PauseButton_Click" Grid.Column="1" HorizontalAlignment="Stretch" IsEnabled="False"/>
+            <Button x:Name="ResumeButton" Content="Resume" Click="ResumeButton_Click" Grid.Column="2" HorizontalAlignment="Stretch" IsEnabled="False"/>
+            <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click" Grid.Column="3" HorizontalAlignment="Stretch" IsEnabled="False"/>
+        </Grid>
 
         <StackPanel x:Name="ProgressBarsPanel" Grid.Row="4" Margin="0,8,0,0" Spacing="4"/>
 
