@@ -47,7 +47,7 @@ public class DownloadJob
         }
     }
 
-    public async Task StartDownloadAsync(IProgress<double> progress, CancellationToken cancellationToken)
+    public async Task StartDownloadAsync(IProgress<double> globalProgress, IList<IProgress<double>> chunkProgresses, CancellationToken cancellationToken)
     {
         if (ChunkCount <= 0) throw new ArgumentOutOfRangeException(nameof(ChunkCount), "Chunk count must be greater than 0.");
         if (TotalFileSize <= 0) throw new InvalidOperationException("TotalFileSize must be set before starting download.");
@@ -62,7 +62,9 @@ public class DownloadJob
             long startByte = i * chunkSize;
             long endByte = (i == ChunkCount - 1) ? TotalFileSize - 1 : (startByte + chunkSize - 1);
 
-            tasks.Add(DownloadChunkAsync(i, startByte, endByte, progress, cancellationToken));
+            var chunkProgress = chunkProgresses != null && i < chunkProgresses.Count ? chunkProgresses[i] : null;
+
+            tasks.Add(DownloadChunkAsync(i, startByte, endByte, globalProgress, chunkProgress, cancellationToken));
         }
 
         await Task.WhenAll(tasks);
@@ -70,19 +72,24 @@ public class DownloadJob
         await MergeChunksAsync();
     }
 
-    private async Task DownloadChunkAsync(int chunkIndex, long originalStartByte, long endByte, IProgress<double> progress, CancellationToken cancellationToken)
+    private async Task DownloadChunkAsync(int chunkIndex, long originalStartByte, long endByte, IProgress<double> globalProgress, IProgress<double> chunkProgress, CancellationToken cancellationToken)
     {
         string partFilePath = $"{TargetFilePath}.part{chunkIndex}";
         long currentStartByte = originalStartByte;
         long existingFileSize = 0;
+
+        long totalChunkBytes = endByte - originalStartByte + 1;
+        long chunkBytesDownloaded = 0;
 
         if (File.Exists(partFilePath))
         {
             var fileInfo = new FileInfo(partFilePath);
             existingFileSize = fileInfo.Length;
             currentStartByte += existingFileSize;
+            chunkBytesDownloaded = existingFileSize;
             Interlocked.Add(ref _totalBytesDownloaded, existingFileSize);
-            ReportProgress(progress);
+            ReportProgress(globalProgress);
+            ReportChunkProgress(chunkProgress, chunkBytesDownloaded, totalChunkBytes);
         }
 
         if (currentStartByte > endByte)
@@ -108,8 +115,10 @@ public class DownloadJob
             while ((bytesRead = await contentStream.ReadAsync(buffer, 0, buffer.Length, cancellationToken)) > 0)
             {
                 await fileStream.WriteAsync(buffer, 0, bytesRead, cancellationToken);
+                chunkBytesDownloaded += bytesRead;
                 Interlocked.Add(ref _totalBytesDownloaded, bytesRead);
-                ReportProgress(progress);
+                ReportProgress(globalProgress);
+                ReportChunkProgress(chunkProgress, chunkBytesDownloaded, totalChunkBytes);
             }
         }
         catch (OperationCanceledException)
@@ -130,6 +139,16 @@ public class DownloadJob
         {
             double percentage = (double)Interlocked.Read(ref _totalBytesDownloaded) / TotalFileSize * 100.0;
             // Ensure we do not exceed 100%
+            if (percentage > 100.0) percentage = 100.0;
+            progress.Report(percentage);
+        }
+    }
+
+    private void ReportChunkProgress(IProgress<double> progress, long chunkBytesDownloaded, long totalChunkBytes)
+    {
+        if (progress != null && totalChunkBytes > 0)
+        {
+            double percentage = (double)chunkBytesDownloaded / totalChunkBytes * 100.0;
             if (percentage > 100.0) percentage = 100.0;
             progress.Report(percentage);
         }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -48,20 +49,9 @@ namespace DownloadManager
 
             DownloadButton.IsEnabled = false;
             StatusTextBlock.Text = $"Downloading to {targetFilePath}...";
-            DownloadProgressBar.Value = 0;
+            ProgressBarsPanel.Children.Clear();
 
             _cts = new CancellationTokenSource();
-
-            var progress = new Progress<double>(percent =>
-            {
-                // UI updates must be on the UI thread.
-                // In WinUI/Uno, they usually marshal back, but to be safe:
-                DispatcherQueue.TryEnqueue(() => 
-                {
-                    DownloadProgressBar.Value = percent;
-                    StatusTextBlock.Text = $"Downloading: {percent:F2}%";
-                });
-            });
 
             var job = new DownloadJob(url, targetFilePath, chunkCount);
 
@@ -69,11 +59,45 @@ namespace DownloadManager
             {
                 await job.InitializeAsync();
 
+                var chunkProgresses = new List<IProgress<double>>();
 
-                await job.StartDownloadAsync(progress, _cts.Token);
+                // If the server doesn't support range requests, chunkCount is adjusted in InitializeAsync
+                int actualChunkCount = job.ChunkCount;
+
+                for (int i = 0; i < actualChunkCount; i++)
+                {
+                    var chunkPanel = new StackPanel { Orientation = Orientation.Vertical, Margin = new Thickness(0, 0, 0, 8) };
+                    var chunkTextBlock = new TextBlock { Text = $"Chunk {i + 1}: 0.00%", Style = (Style)Application.Current.Resources["BodyTextBlockStyle"] };
+                    var chunkProgressBar = new ProgressBar { Minimum = 0, Maximum = 100, Value = 0, HorizontalAlignment = HorizontalAlignment.Stretch };
+
+                    chunkPanel.Children.Add(chunkTextBlock);
+                    chunkPanel.Children.Add(chunkProgressBar);
+                    ProgressBarsPanel.Children.Add(chunkPanel);
+
+                    int chunkIndex = i; // capture loop variable
+                    var chunkProgress = new Progress<double>(percent =>
+                    {
+                        DispatcherQueue.TryEnqueue(() =>
+                        {
+                            chunkProgressBar.Value = percent;
+                            chunkTextBlock.Text = $"Chunk {chunkIndex + 1}: {percent:F2}%";
+                        });
+                    });
+                    chunkProgresses.Add(chunkProgress);
+                }
+
+                var globalProgress = new Progress<double>(percent =>
+                {
+                    DispatcherQueue.TryEnqueue(() =>
+                    {
+                        StatusTextBlock.Text = $"Total Downloading: {percent:F2}%";
+                    });
+                });
+
+
+                await job.StartDownloadAsync(globalProgress, chunkProgresses, _cts.Token);
 
                 StatusTextBlock.Text = "Merged Successfully";
-                DownloadProgressBar.Value = 100;
             }
             catch (OperationCanceledException)
             {
