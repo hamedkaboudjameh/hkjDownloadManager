@@ -20,7 +20,7 @@
 
         <TextBlock Text="Download Manager" Style="{StaticResource TitleTextBlockStyle}" Grid.Row="0"/>
 
-        <TextBox x:Name="UrlTextBox" Header="Download URL" PlaceholderText="https://example.com/file.zip" Grid.Row="1"/>
+        <TextBox x:Name="UrlTextBox" Header="Download URL(s)" PlaceholderText="https://example.com/file1.zip&#x0a;https://example.com/file2.zip" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="100" Grid.Row="1"/>
 
         <!-- In Uno, NumberBox might require Microsoft.UI.Xaml.Controls namespace if not implicitly included.
              But it usually is. We will use the same XAML. -->
