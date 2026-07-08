@@ -28,7 +28,7 @@
 
         <Button x:Name="DownloadButton" Content="Start Download" Style="{StaticResource AccentButtonStyle}" Click="DownloadButton_Click" Grid.Row="3" HorizontalAlignment="Stretch"/>
 
-        <ProgressBar x:Name="DownloadProgressBar" Minimum="0" Maximum="100" Value="0" Grid.Row="4" Margin="0,8,0,0"/>
+        <StackPanel x:Name="ProgressBarsPanel" Grid.Row="4" Margin="0,8,0,0" Spacing="4"/>
 
         <TextBlock x:Name="StatusTextBlock" Text="Ready" Grid.Row="5" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"/>
     </Grid>
