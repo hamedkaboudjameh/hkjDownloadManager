@@ -15,6 +15,9 @@ namespace DownloadManager
         private bool _isPaused;
         private bool _isStopped;
 
+        private Queue<string> _downloadQueue = new();
+        private bool _isProcessingQueue;
+
         private List<ProgressBar> _chunkProgressBars = new();
         private List<TextBlock> _chunkTextBlocks = new();
 
@@ -57,24 +60,79 @@ namespace DownloadManager
 
         private async void DownloadButton_Click(object sender, RoutedEventArgs e)
         {
-            await StartOrResumeDownload(false);
+            var urls = UrlTextBox.Text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (var url in urls)
+            {
+                string trimmed = url.Trim();
+                if (!string.IsNullOrWhiteSpace(trimmed))
+                {
+                    _downloadQueue.Enqueue(trimmed);
+                }
+            }
+            UrlTextBox.Text = string.Empty;
+
+            _isStopped = false;
+
+            if (!_isProcessingQueue && !_isPaused)
+            {
+                await ProcessQueueAsync();
+            }
         }
 
-        private async Task StartOrResumeDownload(bool isResume)
+        private async Task ProcessQueueAsync()
+        {
+            _isProcessingQueue = true;
+            bool encounteredError = false;
+            try
+            {
+                while (_downloadQueue.Count > 0 && !_isStopped && !_isPaused)
+                {
+                    string url = _downloadQueue.Dequeue();
+                    bool success = await StartOrResumeDownload(false, url);
+                    if (!success)
+                    {
+                        encounteredError = true;
+                        break; // Stop processing if a download failed or was cancelled
+                    }
+                }
+            }
+            finally
+            {
+                _isProcessingQueue = false;
+                if (!_isPaused && !_isStopped)
+                {
+                    UpdateButtonStates(isIdle: true);
+                    if (!encounteredError && _downloadQueue.Count == 0 && _currentJob == null)
+                    {
+                        StatusTextBlock.Text = "All downloads completed.";
+                    }
+                }
+                else if (_isPaused)
+                {
+                    UpdateButtonStates(isPaused: true);
+                }
+                else if (_isStopped)
+                {
+                    UpdateButtonStates(isIdle: true);
+                }
+            }
+        }
+
+        private async Task<bool> StartOrResumeDownload(bool isResume, string? overrideUrl = null)
         {
             if (!isResume)
             {
-                string url = UrlTextBox.Text;
+                string url = overrideUrl ?? UrlTextBox.Text;
                 if (string.IsNullOrWhiteSpace(url))
                 {
                     StatusTextBlock.Text = "Please enter a valid URL.";
-                    return;
+                    return false;
                 }
 
                 if (!Uri.TryCreate(url, UriKind.Absolute, out Uri uriResult) || (uriResult.Scheme != Uri.UriSchemeHttp && uriResult.Scheme != Uri.UriSchemeHttps))
                 {
                     StatusTextBlock.Text = "Invalid URL format.";
-                    return;
+                    return false;
                 }
 
                 // In Uno, the Value property of NumberBox is double, so we cast to int
@@ -82,7 +140,7 @@ namespace DownloadManager
                 if (chunkCount <= 0)
                 {
                     StatusTextBlock.Text = "Chunk count must be greater than 0.";
-                    return;
+                    return false;
                 }
 
                 string fileName = Path.GetFileName(uriResult.LocalPath) ?? "";
@@ -91,6 +149,21 @@ namespace DownloadManager
                     fileName = "downloaded_file";
                 }
                 string targetFilePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads", fileName);
+
+                if (File.Exists(targetFilePath))
+                {
+                    string directory = Path.GetDirectoryName(targetFilePath) ?? "";
+                    string nameWithoutExtension = Path.GetFileNameWithoutExtension(targetFilePath);
+                    string extension = Path.GetExtension(targetFilePath);
+                    int counter = 1;
+
+                    do
+                    {
+                        string newFileName = $"{nameWithoutExtension}_{counter}{extension}";
+                        targetFilePath = Path.Combine(directory, newFileName);
+                        counter++;
+                    } while (File.Exists(targetFilePath));
+                }
 
                 _currentJob = new DownloadJob(url, targetFilePath, chunkCount);
                 _isStopped = false;
@@ -178,7 +251,7 @@ namespace DownloadManager
                 SpeedTextBlock.Text = "Send: 0 kbps | Receive: 0 kbps";
                 StatusTextBlock.Text = "Merged Successfully";
                 _currentJob = null;
-                UpdateButtonStates(isIdle: true);
+                return true;
             }
             catch (OperationCanceledException)
             {
@@ -187,25 +260,25 @@ namespace DownloadManager
                     CleanupPartFiles();
                     StatusTextBlock.Text = "Download Stopped.";
                     _currentJob = null;
-                    UpdateButtonStates(isIdle: true);
+                    return false;
                 }
                 else if (_isPaused)
                 {
                     StatusTextBlock.Text = "Download Paused.";
-                    UpdateButtonStates(isPaused: true);
+                    return false;
                 }
                 else
                 {
                     StatusTextBlock.Text = "Download Cancelled.";
                     _currentJob = null;
-                    UpdateButtonStates(isIdle: true);
+                    return false;
                 }
             }
             catch (Exception ex)
             {
                 StatusTextBlock.Text = $"Error: {ex.Message}";
                 _currentJob = null;
-                UpdateButtonStates(isIdle: true);
+                return false;
             }
             finally
             {
@@ -229,12 +302,22 @@ namespace DownloadManager
         {
             if (_currentJob != null && _isPaused)
             {
-                await StartOrResumeDownload(true);
+                bool success = await StartOrResumeDownload(true);
+                if (!success)
+                {
+                    if (_isPaused) UpdateButtonStates(isPaused: true);
+                    else UpdateButtonStates(isIdle: true);
+                }
+                else if (!_isPaused && !_isStopped)
+                {
+                    await ProcessQueueAsync();
+                }
             }
         }
 
         private void StopButton_Click(object sender, RoutedEventArgs e)
         {
+            _downloadQueue.Clear();
             _isStopped = true;
 
             if (_cts != null && !_cts.IsCancellationRequested)
