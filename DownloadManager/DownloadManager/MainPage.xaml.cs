@@ -18,9 +18,31 @@ namespace DownloadManager
         private List<ProgressBar> _chunkProgressBars = new();
         private List<TextBlock> _chunkTextBlocks = new();
 
+        private DispatcherTimer _speedTimer;
+        private long _previousBytesDownloaded;
+
         public MainPage()
         {
             this.InitializeComponent();
+            _speedTimer = new DispatcherTimer();
+            _speedTimer.Interval = TimeSpan.FromSeconds(1);
+            _speedTimer.Tick += SpeedTimer_Tick;
+        }
+
+        private void SpeedTimer_Tick(object? sender, object e)
+        {
+            if (_currentJob != null)
+            {
+                long currentBytesDownloaded = _currentJob.TotalBytesDownloaded;
+                long bytesDifference = currentBytesDownloaded - _previousBytesDownloaded;
+                _previousBytesDownloaded = currentBytesDownloaded;
+
+                // Send speed can be simulated or 0 as we are only downloading
+                // Receive speed in kbps (1 kilobyte = 1024 bytes)
+                double speedKbps = bytesDifference / 1024.0;
+
+                SpeedTextBlock.Text = $"Send: 0 kbps | Receive: {speedKbps:F2} kbps";
+            }
         }
 
         private void UpdateButtonStates(bool isIdle = false, bool isDownloading = false, bool isPaused = false)
@@ -77,6 +99,16 @@ namespace DownloadManager
             _isPaused = false;
             UpdateButtonStates(isDownloading: true);
             StatusTextBlock.Text = isResume ? $"Resuming download to {_currentJob?.TargetFilePath}..." : $"Downloading to {_currentJob?.TargetFilePath}...";
+
+            if (_currentJob != null)
+            {
+                _previousBytesDownloaded = _currentJob.TotalBytesDownloaded;
+            }
+            else
+            {
+                _previousBytesDownloaded = 0;
+            }
+            _speedTimer.Start();
 
             _cts = new CancellationTokenSource();
 
@@ -142,6 +174,8 @@ namespace DownloadManager
                     await _currentJob.StartDownloadAsync(globalProgress, chunkProgresses, _cts.Token);
                 }
 
+                _speedTimer.Stop();
+                SpeedTextBlock.Text = "Send: 0 kbps | Receive: 0 kbps";
                 StatusTextBlock.Text = "Merged Successfully";
                 _currentJob = null;
                 UpdateButtonStates(isIdle: true);
@@ -175,6 +209,8 @@ namespace DownloadManager
             }
             finally
             {
+                _speedTimer.Stop();
+                SpeedTextBlock.Text = "Send: 0 kbps | Receive: 0 kbps";
                 _cts?.Dispose();
                 _cts = null;
             }

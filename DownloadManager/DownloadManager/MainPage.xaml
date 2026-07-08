@@ -14,8 +14,8 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
-            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
         <TextBlock Text="Download Manager" Style="{StaticResource TitleTextBlockStyle}" Grid.Row="0"/>
@@ -39,8 +39,17 @@
             <Button x:Name="StopButton" Content="Stop" Click="StopButton_Click" Grid.Column="3" HorizontalAlignment="Stretch" IsEnabled="False"/>
         </Grid>
 
-        <StackPanel x:Name="ProgressBarsPanel" Grid.Row="4" Margin="0,8,0,0" Spacing="4"/>
+        <ScrollViewer Grid.Row="4" Margin="0,8,0,0" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="ProgressBarsPanel" Spacing="4"/>
+        </ScrollViewer>
 
-        <TextBlock x:Name="StatusTextBlock" Text="Ready" Grid.Row="5" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"/>
+        <Grid Grid.Row="5" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="StatusTextBlock" Text="Ready" Grid.Column="0" TextWrapping="Wrap" Style="{StaticResource BodyTextBlockStyle}"/>
+            <TextBlock x:Name="SpeedTextBlock" Text="Send: 0 kbps | Receive: 0 kbps" Grid.Column="1" Style="{StaticResource BodyTextBlockStyle}" HorizontalAlignment="Right"/>
+        </Grid>
     </Grid>
 </Page>

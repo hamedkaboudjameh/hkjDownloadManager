@@ -15,6 +15,7 @@ public class DownloadJob
     private readonly HttpClient _httpClient;
 
     private long _totalBytesDownloaded;
+    public long TotalBytesDownloaded => Interlocked.Read(ref _totalBytesDownloaded);
 
     public DownloadJob(string downloadUrl, string targetFilePath, int chunkCount, HttpClient httpClient = null)
     {
